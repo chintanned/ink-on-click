@@ -1,0 +1,20 @@
+{
+  "name": "ink-on-click",
+  "version": "1.0.0",
+  "description": "Click and drag watercolor ink for the web. WebGL2, no dependencies.",
+  "type": "module",
+  "main": "src/ink.js",
+  "module": "src/ink.js",
+  "exports": { ".": "./src/ink.js" },
+  "files": ["src"],
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "node scripts/build.mjs"
+  },
+  "keywords": ["webgl", "ink", "watercolor", "fluid", "interactive", "canvas", "effect"],
+  "author": "Chintan (chintanned.com)",
+  "license": "MIT",
+  "devDependencies": {
+    "dialkit": "^2.0.2"
+  }
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ink on Click</title>
+<meta name="description" content="Click and drag watercolor ink for the web. WebGL2, no dependencies." />
+<meta property="og:title" content="Ink on Click" />
+<meta property="og:description" content="Click and drag watercolor ink for the web. WebGL2, no dependencies." />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dialkit@2.0.2/dist/vanilla/styles.css" />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #ffffff; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-user-select: none; user-select: none; }
+  #ink { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  #hint {
+    position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
+    font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #111;
+    opacity: .45; pointer-events: none; transition: opacity .8s ease;
+  }
+  #hint.gone { opacity: 0; }
+  #nogl { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; text-align: center; font-size: 15px; color: #333; }
+</style>
+</head>
+<body>
+<canvas id="ink"></canvas>
+<div id="hint">Click and drag</div>
+<div id="nogl">This effect needs WebGL2, which this browser does not support.</div>
+
+<!--DIALKIT-->
+<script src="https://cdn.jsdelivr.net/npm/dialkit@2.0.2/dist/vanilla/browser.global.js"></script>
+<!--/DIALKIT-->
+<script type="module">
+import { createInk, defaults } from "../src/ink.js";
+
+const canvas = document.getElementById("ink");
+const hint = document.getElementById("hint");
+
+let ink;
+try {
+  ink = createInk(canvas);
+} catch (err) {
+  document.getElementById("nogl").style.display = "grid";
+  throw err;
+}
+canvas.addEventListener("pointerdown", () => hint.classList.add("gone"), { once: true });
+
+/* ---------- DialKit playground ---------- */
+const MAX_COLORS = 5;
+const palette = ["#ff2d55", "#ffb800", "#1fd65f", "#1e6bff", "#b43cff"];
+let colorCount = 2, colorMode = "Rainbow";
+
+DialKit.createDialRoot({ position: "top-right", theme: "light" });
+
+const color = {
+  mode: { type: "select", options: ["Rainbow", "Custom"], default: "Rainbow" },
+  hueSpeed: [defaults.hueSpeed, 0, 4, 0.05],
+  newHueEachClick: defaults.newHueEachClick,
+};
+// all five pickers always exist and unused ones are hidden,
+// so adding a color never rebuilds the panel or resets its scroll
+for (let i = 0; i < MAX_COLORS; i++) color["color " + (i + 1)] = palette[i];
+color.addColor = { type: "action", label: "Add color" };
+color.removeColor = { type: "action", label: "Remove last color" };
+color.saturation = [defaults.saturation, 0, 1, 0.01];
+color.depth = [defaults.depth, 0.3, 2.5, 0.05];
+
+const kit = DialKit.createDialKit("Ink", {
+  Brush: {
+    size: [defaults.size, 6, 140, 1],
+    inkAmount: [defaults.inkAmount, 0.1, 3, 0.05],
+    holdInk: [defaults.holdInk, 0, 2, 0.05],
+    flow: [defaults.flow, 0, 3, 0.05],
+  },
+  Spread: {
+    bloom: [defaults.bloom, 0, 4, 0.05],
+    spreadSpeed: [defaults.spreadSpeed, 0, 1, 0.01],
+    edgeRoughness: [defaults.edgeRoughness, 0, 1, 0.01],
+    edgeSoftness: [defaults.edgeSoftness, 0, 1, 0.01],
+    grain: [defaults.grain, 1, 20, 0.5],
+    turbulence: [defaults.turbulence, 0, 3, 0.05],
+    swirl: [defaults.swirl, 0, 30, 0.5],
+  },
+  Fade: {
+    fadeSpeed: [defaults.fadeSpeed, 0, 3, 0.01],
+    settle: [defaults.settle, 0.1, 8, 0.1],
+  },
+  Color: color,
+  Scene: {
+    background: defaults.background,
+    quality: { type: "select", options: ["Low", "Medium", "High"], default: "High" },
+    showHint: false,
+    clear: { type: "action", label: "Clear ink" },
+  },
+}, {
+  onAction(path) {
+    if (path.endsWith("clear")) ink.clear();
+    else if (path.endsWith("addColor") && colorCount < MAX_COLORS) { colorCount++; apply(kit.getValues()); }
+    else if (path.endsWith("removeColor") && colorCount > 1) { colorCount--; apply(kit.getValues()); }
+  },
+});
+
+function setShown(el, show) {
+  const v = show ? "" : "none";
+  if (el && el.style.display !== v) el.style.display = v;
+}
+function syncPanel() {
+  const custom = colorMode === "Custom";
+  document.querySelectorAll(".dialkit-color-control").forEach(row => {
+    const m = /^Color (\d)$/.exec(row.querySelector(".dialkit-color-label")?.textContent || "");
+    if (m) setShown(row, custom && +m[1] <= colorCount);
+  });
+  document.querySelectorAll("button.dialkit-button").forEach(btn => {
+    const label = btn.textContent.trim();
+    if (label === "Add color") setShown(btn, custom && colorCount < MAX_COLORS);
+    if (label === "Remove last color") setShown(btn, custom && colorCount > 1);
+  });
+}
+new MutationObserver(syncPanel).observe(document.body, { childList: true, subtree: true });
+
+function apply(v) {
+  const c = v.Color, s = v.Scene;
+  colorMode = c.mode;
+  const colors = [];
+  for (let i = 1; i <= colorCount; i++) colors.push(c["color " + i]);
+  ink.set({
+    ...v.Brush, ...v.Spread, ...v.Fade,
+    mode: c.mode.toLowerCase(), colors,
+    hueSpeed: c.hueSpeed, newHueEachClick: c.newHueEachClick,
+    saturation: c.saturation, depth: c.depth,
+    background: s.background, quality: s.quality.toLowerCase(),
+  });
+  document.body.style.background = s.background;
+  hint.style.display = s.showHint ? "" : "none";
+  syncPanel();
+}
+kit.subscribe(apply);
+</script>
+</body>
+</html>
